@@ -15,20 +15,43 @@ const Login: React.FC = () => {
     password: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Simulate login success
-    toast({
-      title: "Welcome back!",
-      description: "You've been logged in successfully.",
-    });
-    
-    // Store auth state (simulate)
-    localStorage.setItem('isAuthenticated', 'true');
-    localStorage.setItem('userEmail', formData.email);
-    
-    navigate('/dashboard');
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('userEmail', formData.email); // You might want to fetch user details from backend
+        toast({
+          title: "Welcome back!",
+          description: "You've been logged in successfully.",
+        });
+        navigate('/dashboard');
+      } else {
+        toast({
+          title: "Login Failed",
+          description: data.msg || "Invalid credentials. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again later.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

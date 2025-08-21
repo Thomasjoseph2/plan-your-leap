@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Rocket } from 'lucide-react';
+import { Rocket, Loader2 } from 'lucide-react';
 
 interface PlanFormData {
   targetRole: string;
@@ -15,9 +15,10 @@ interface PlanFormData {
 
 interface PlanFormProps {
   onSubmit: (data: PlanFormData) => void;
+  isLoading: boolean;
 }
 
-export const PlanForm: React.FC<PlanFormProps> = ({ onSubmit }) => {
+export const PlanForm: React.FC<PlanFormProps> = ({ onSubmit, isLoading }) => {
   const [formData, setFormData] = useState<PlanFormData>({
     targetRole: '',
     skillLevel: '',
@@ -46,6 +47,7 @@ export const PlanForm: React.FC<PlanFormProps> = ({ onSubmit }) => {
             onChange={(e) => setFormData({ ...formData, targetRole: e.target.value })}
             className="w-full"
             required
+            disabled={isLoading}
           />
         </div>
 
@@ -57,6 +59,7 @@ export const PlanForm: React.FC<PlanFormProps> = ({ onSubmit }) => {
             value={formData.skillLevel} 
             onValueChange={(value) => setFormData({ ...formData, skillLevel: value })}
             required
+            disabled={isLoading}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select your level" />
@@ -81,6 +84,7 @@ export const PlanForm: React.FC<PlanFormProps> = ({ onSubmit }) => {
             value={formData.timeInMonths}
             onChange={(e) => setFormData({ ...formData, timeInMonths: parseInt(e.target.value) || 1 })}
             className="w-full"
+            disabled={isLoading}
           />
         </div>
 
@@ -97,16 +101,26 @@ export const PlanForm: React.FC<PlanFormProps> = ({ onSubmit }) => {
             value={formData.hoursPerDay}
             onChange={(e) => setFormData({ ...formData, hoursPerDay: parseFloat(e.target.value) || 1 })}
             className="w-full"
+            disabled={isLoading}
           />
         </div>
 
         <Button 
           type="submit" 
           className="btn-hero w-full flex items-center justify-center gap-2"
-          disabled={!formData.targetRole || !formData.skillLevel}
+          disabled={!formData.targetRole || !formData.skillLevel || isLoading}
         >
-          <Rocket className="w-5 h-5" />
-          Let's Go 🚀
+          {isLoading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Generating Plan...
+            </>
+          ) : (
+            <>
+              <Rocket className="w-5 h-5" />
+              Let's Go 🚀
+            </>
+          )}
         </Button>
       </form>
     </Card>

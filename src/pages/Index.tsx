@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { PlanForm } from '@/components/PlanForm';
+import { useToast } from '@/hooks/use-toast';
 import { Target, ArrowRight, Users, Award, TrendingUp } from 'lucide-react';
 import heroImage from '@/assets/hero-image.jpg';
 
@@ -14,17 +15,57 @@ interface PlanFormData {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const isAuthenticated = localStorage.getItem('isAuthenticated');
 
-  const handlePlanSubmit = (data: PlanFormData) => {
-    console.log('Plan data:', data);
-    // In a real app, this would generate the plan via LangChain
-    // For now, we'll redirect to dashboard
-    if (isAuthenticated) {
-      navigate('/dashboard');
-    } else {
+  const handlePlanSubmit = async (data: PlanFormData) => {
+    if (!isAuthenticated) {
       navigate('/register');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:5000/api/plans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Plan Generated!",
+          description: "Your personalized plan is ready. Let's get started!",
+        });
+        navigate('/dashboard');
+      } else {
+        const errorData = await response.json();
+        toast({
+          title: "Error",
+          description: errorData.msg || "Failed to create plan. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error creating plan:', error);
+      toast({
+        title: "Network Error",
+        description: "Could not connect to the server. Please check your connection.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -135,7 +176,7 @@ const Index = () => {
 
             <div className="lg:pl-8">
               {showForm ? (
-                <PlanForm onSubmit={handlePlanSubmit} />
+                <PlanForm onSubmit={handlePlanSubmit} isLoading={isLoading} />
               ) : (
                 <div className="card-glow p-8 text-center space-y-6">
                   <Users className="w-12 h-12 text-primary mx-auto" />

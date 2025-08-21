@@ -17,7 +17,7 @@ const Register: React.FC = () => {
     confirmPassword: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (formData.password !== formData.confirmPassword) {
@@ -29,18 +29,46 @@ const Register: React.FC = () => {
       return;
     }
 
-    // Simulate registration success
-    toast({
-      title: "Account created!",
-      description: "Welcome to Interview Prep Planner! Let's start your journey.",
-    });
-    
-    // Store auth state (simulate)
-    localStorage.setItem('isAuthenticated', 'true');
-    localStorage.setItem('userEmail', formData.email);
-    localStorage.setItem('userName', formData.name);
-    
-    navigate('/');
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('userEmail', formData.email);
+        localStorage.setItem('userName', formData.name);
+        toast({
+          title: "Account created!",
+          description: "Welcome to Interview Prep Planner! Let's start your journey.",
+        });
+        navigate('/'); // Redirect to home or dashboard after successful registration
+      } else {
+        toast({
+          title: "Registration Failed",
+          description: data.msg || "Something went wrong. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again later.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

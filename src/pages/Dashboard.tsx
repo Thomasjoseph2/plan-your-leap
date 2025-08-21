@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ProgressBar';
 import { MotivationalQuote } from '@/components/MotivationalQuote';
 import { TaskItem } from '@/components/TaskItem';
+import { useToast } from '@/hooks/use-toast';
 import { 
   User, 
   BookOpen, 
@@ -17,104 +18,205 @@ import {
   Clock
 } from 'lucide-react';
 
-// Mock data structure
-const mockPlan = {
-  targetRole: "Node.js Developer",
-  skillLevel: "Intermediate",
-  totalProgress: 35,
-  months: [
-    {
-      id: 1,
-      title: "Month 1: Fundamentals & Foundations",
-      progress: 75,
-      isExpanded: false,
-      weeks: [
-        {
-          id: 1,
-          title: "Week 1: JavaScript Mastery",
-          subtitle: "Build your core foundation 💪",
-          progress: 100,
-          isExpanded: false,
-          days: [
-            {
-              id: 1,
-              title: "Day 1",
-              tasks: [
-                { id: '1', title: 'Review ES6+ features', description: 'Arrow functions, destructuring, promises', completed: true, estimatedTime: '2 hours' },
-                { id: '2', title: 'Practice async/await patterns', completed: true, estimatedTime: '1.5 hours' },
-                { id: '3', title: 'Build a simple promise chain', completed: false, estimatedTime: '1 hour' }
-              ]
-            }
-          ]
-        },
-        {
-          id: 2,
-          title: "Week 2: Node.js Basics",
-          subtitle: "Stay focused — Week 2 is all about mastery",
-          progress: 60,
-          isExpanded: false,
-          days: []
-        }
-      ]
-    },
-    {
-      id: 2,
-      title: "Month 2: Advanced Concepts",
-      progress: 20,
-      isExpanded: false,
-      weeks: []
-    }
-  ]
-};
+interface Task {
+  _id: string;
+  title: string;
+  description?: string;
+  completed: boolean;
+  estimatedTime?: string;
+}
+
+interface Day {
+  _id: string;
+  title: string;
+  tasks: Task[];
+}
+
+interface Week {
+  _id: string;
+  title: string;
+  subtitle?: string;
+  progress: number;
+  isExpanded: boolean;
+  days: Day[];
+}
+
+interface Month {
+  _id: string;
+  title: string;
+  progress: number;
+  isExpanded: boolean;
+  weeks: Week[];
+}
+
+interface Plan {
+  _id: string;
+  targetRole: string;
+  skillLevel: string;
+  totalProgress: number;
+  months: Month[];
+}
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [plan, setPlan] = useState(mockPlan);
-  const [currentStreak, setCurrentStreak] = useState(3);
+  const { toast } = useToast();
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [currentStreak, setCurrentStreak] = useState(3); // This would ideally come from backend
 
-  useEffect(() => {
-    const isAuth = localStorage.getItem('isAuthenticated');
-    if (!isAuth) {
+  const fetchPlans = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/api/plans', {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Assuming we only display the most recent plan for simplicity
+        if (data.length > 0) {
+          setPlan({ ...data[0], isExpanded: false }); // Initialize isExpanded for months/weeks
+        }
+      } else {
+        toast({
+          title: "Failed to fetch plans",
+          description: "Please try again later.",
+          variant: "destructive",
+        });
+        navigate('/login'); // Redirect if token is invalid or no plans
+      }
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+      toast({
+        title: "Error",
+        description: "Something went wrong while fetching plans.",
+        variant: "destructive",
+      });
       navigate('/login');
     }
-  }, [navigate]);
+  }, [navigate, toast]);
+
+  useEffect(() => {
+    fetchPlans();
+  }, [fetchPlans]);
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userName');
+    localStorage.removeItem('token');
     navigate('/');
   };
 
-  const toggleMonth = (monthId: number) => {
-    setPlan(prev => ({
-      ...prev,
-      months: prev.months.map(month =>
-        month.id === monthId ? { ...month, isExpanded: !month.isExpanded } : month
-      )
-    }));
+  const toggleMonth = (monthId: string) => {
+    setPlan(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        months: prev.months.map(month =>
+          month._id === monthId ? { ...month, isExpanded: !month.isExpanded } : month
+        )
+      };
+    });
   };
 
-  const toggleWeek = (monthId: number, weekId: number) => {
-    setPlan(prev => ({
-      ...prev,
-      months: prev.months.map(month =>
-        month.id === monthId
-          ? {
-              ...month,
-              weeks: month.weeks.map(week =>
-                week.id === weekId ? { ...week, isExpanded: !week.isExpanded } : week
-              )
+  const toggleWeek = (monthId: string, weekId: string) => {
+    setPlan(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        months: prev.months.map(month =>
+          month._id === monthId
+            ? {
+                ...month,
+                weeks: month.weeks.map(week =>
+                  week._id === weekId ? { ...week, isExpanded: !week.isExpanded } : week
+                )
+              }
+            : month
+        )
+      };
+    });
+  };
+
+  const handleTaskToggle = async (taskId: string) => {
+    if (!plan) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    // Find the task and its parent IDs
+    let updatedPlan = { ...plan };
+    let foundTask = false;
+    for (const month of updatedPlan.months) {
+      for (const week of month.weeks) {
+        for (const day of week.days) {
+          const task = day.tasks.find(t => t._id === taskId);
+          if (task) {
+            task.completed = !task.completed;
+            foundTask = true;
+            
+            try {
+              const response = await fetch(`http://localhost:5000/api/plans/${plan._id}/${month._id}/${week._id}/${day._id}/${taskId}`,
+                {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token,
+                  },
+                  body: JSON.stringify({ completed: task.completed }),
+                }
+              );
+
+              if (response.ok) {
+                const updatedPlanFromServer = await response.json();
+                setPlan(updatedPlanFromServer); // Update state with fresh data from server
+                toast({
+                  title: "Task Updated",
+                  description: "Task completion status has been updated.",
+                });
+              } else {
+                toast({
+                  title: "Update Failed",
+                  description: "Could not update task. Please try again.",
+                  variant: "destructive",
+                });
+                // Revert task status if update fails
+                task.completed = !task.completed;
+                setPlan(updatedPlan); // Revert local state
+              }
+            } catch (error) {
+              console.error('Error updating task:', error);
+              toast({
+                title: "Error",
+                description: "Network error. Could not update task.",
+                variant: "destructive",
+              });
+              // Revert task status if update fails
+              task.completed = !task.completed;
+              setPlan(updatedPlan); // Revert local state
             }
-          : month
-      )
-    }));
+            break;
+          }
+        }
+        if (foundTask) break;
+      }
+      if (foundTask) break;
+    }
   };
 
-  const handleTaskToggle = (taskId: string) => {
-    // Update task completion state
-    console.log(`Toggle task ${taskId}`);
-  };
+  if (!plan) {
+    return <div className="min-h-screen bg-background flex items-center justify-center">Loading your plan...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -192,11 +294,11 @@ const Dashboard: React.FC = () => {
           {/* Plan Content */}
           <div className="lg:col-span-2 space-y-4">
             {plan.months.map((month) => (
-              <Card key={month.id} className="card-soft overflow-hidden">
+              <Card key={month._id} className="card-soft overflow-hidden">
                 {/* Month Header */}
                 <div 
                   className="p-6 cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => toggleMonth(month.id)}
+                  onClick={() => toggleMonth(month._id)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -231,10 +333,10 @@ const Dashboard: React.FC = () => {
                 {month.isExpanded && (
                   <div className="border-t border-border">
                     {month.weeks.map((week) => (
-                      <div key={week.id} className="border-b border-border last:border-b-0">
+                      <div key={week._id} className="border-b border-border last:border-b-0">
                         <div 
                           className="p-4 pl-12 cursor-pointer hover:bg-muted/30 transition-colors"
-                          onClick={() => toggleWeek(month.id, week.id)}
+                          onClick={() => toggleWeek(month._id, week._id)}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -259,14 +361,14 @@ const Dashboard: React.FC = () => {
                         {week.isExpanded && (
                           <div className="p-4 pl-16 bg-muted/20 space-y-4">
                             {week.days.map((day) => (
-                              <div key={day.id}>
+                              <div key={day._id}>
                                 <h5 className="font-medium text-sm mb-3 text-foreground">
                                   {day.title}
                                 </h5>
                                 <div className="space-y-2">
                                   {day.tasks.map((task) => (
                                     <TaskItem
-                                      key={task.id}
+                                      key={task._id}
                                       task={task}
                                       onToggle={handleTaskToggle}
                                     />
